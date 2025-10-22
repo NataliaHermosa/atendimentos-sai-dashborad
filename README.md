@@ -1,4 +1,4 @@
-# 📊 Dashboard de Atendimentos - IMAP
+# 📊 Dashboard de Atendimentos - SAI
 
 Dashboard interativo para análise de dados de atendimentos, desenvolvido com Streamlit.
 
