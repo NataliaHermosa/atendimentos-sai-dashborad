@@ -13,39 +13,47 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-@st.cache_data(ttl=300)
+@st.cache_data(ttl=3600)  # Cache de 1 hora
 def load_data(uploaded_file=None):
     """
-    Carrega dados do Excel silenciosamente
+    Carrega dados do Google Sheets ou upload - COM SEU LINK
     """
     try:
-        # Opção 1: Arquivo enviado via upload
+        # Opção 1: Arquivo enviado via upload (prioridade)
         if uploaded_file is not None:
             try:
                 df = pd.read_excel(uploaded_file, sheet_name='dados', engine='openpyxl')
+                st.sidebar.success("✅ Arquivo carregado via upload")
+                return clean_data(df)
             except:
                 try:
                     df = pd.read_excel(uploaded_file, sheet_name='dados', engine='xlrd')
-                except:
-                    df = pd.read_excel(uploaded_file, sheet_name='dados')
+                    st.sidebar.success("✅ Arquivo carregado via upload")
+                    return clean_data(df)
+                except Exception as e:
+                    st.sidebar.warning("⚠️ Erro no upload, usando Google Sheets")
         
-        # Opção 2: Arquivo específico na raiz
-        elif os.path.exists('relatorio_set_out.xls'):
-            try:
-                df = pd.read_excel('relatorio_set_out.xls', sheet_name='dados', engine='xlrd')
-            except:
-                df = pd.read_excel('relatorio_set_out.xls', sheet_name='dados')
-        
-        else:
-            return pd.DataFrame()
-        
-        # Limpeza básica dos dados
-        df = clean_data(df)
-        return df
-        
+        # Opção 2: Google Sheets (AUTOMÁTICO - SEU LINK)
+        try:
+            # SEU LINK DO GOOGLE SHEETS
+            sheet_url = "https://docs.google.com/spreadsheets/d/152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA/edit?gid=804702972#gid=804702972"
+            
+            # Converte para formato de exportação CSV
+            csv_url = sheet_url.replace('/edit?gid=', '/export?format=csv&gid=')
+            csv_url = csv_url.split('#')[0]  # Remove fragmentos
+            
+            # Carrega os dados
+            df = pd.read_csv(csv_url)
+            st.sidebar.success("✅ Dados carregados do Google Sheets")
+            return clean_data(df)
+            
+        except Exception as e:
+            st.sidebar.info("📊 Google Sheets indisponível, usando dados de exemplo")
+            return create_sample_data()
+            
     except Exception as e:
-        st.error(f"❌ Erro ao carregar dados: {e}")
-        return pd.DataFrame()
+        st.sidebar.info("📋 Usando dados de exemplo")
+        return create_sample_data()
 
 def clean_data(df):
     """Função para limpeza e padronização dos dados"""
