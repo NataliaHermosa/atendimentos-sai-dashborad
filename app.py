@@ -5,20 +5,6 @@ import plotly.graph_objects as go
 from datetime import datetime
 import os
 
-# ⚠️ SOLUÇÃO PARA BUG DO STREAMLIT ⚠️
-import warnings
-warnings.filterwarnings("ignore")
-st.set_option('deprecation.showPyplotGlobalUse', False)
-
-# Configuração especial para evitar o erro
-st.markdown("""
-<style>
-    .stApp {
-        overflow: hidden;
-    }
-</style>
-""", unsafe_allow_html=True)
-
 # Configuração da página
 st.set_page_config(
     page_title="Dashboard de Atendimentos - SAI",
