@@ -13,7 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-@st.cache_data(ttl=3600)  # Cache de 1 hora
+@st.cache_data(ttl=300)  # Cache de 5 minutos
 def load_data(uploaded_file=None):
     """
     Carrega dados do Google Sheets ou upload - COM SEU LINK
@@ -88,6 +88,11 @@ def clean_data(df):
 # Componente de upload na sidebar
 def create_sidebar():
     st.sidebar.title("🎛️ Controle de Dados")
+    
+    # Botão para forçar atualização
+    if st.sidebar.button("🔄 Atualizar Dados do Google Sheets"):
+        st.cache_data.clear()  # Limpa todo o cache
+        st.rerun()  # Recarrega a aplicação
     
     # Upload de arquivo
     uploaded_file = st.sidebar.file_uploader(
