@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import gspread
+from google.oauth2 import service_account
 from datetime import datetime
 import os
 
@@ -13,10 +15,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-@st.cache_data(ttl=300)  # Cache de 5 minutos
+@st.cache_data(ttl=300)
 def load_data(uploaded_file=None):
     """
-    Carrega dados do Google Sheets ou upload - COM SEU LINK
+    Carrega dados do Google Sheets - PLANILHA relatorio_set_out
     """
     try:
         # Opção 1: Arquivo enviado via upload (prioridade)
@@ -33,43 +35,131 @@ def load_data(uploaded_file=None):
                 except Exception as e:
                     st.sidebar.warning("⚠️ Erro no upload, usando Google Sheets")
         
-        # Opção 2: Google Sheets (AUTOMÁTICO - SEU LINK)
+        # Opção 2: Google Sheets - NOVA PLANILHA relatorio_set_out
         try:
-            # SEU LINK DO GOOGLE SHEETS
+            # Configuração do Google Sheets API
+            scope = [
+                'https://spreadsheets.google.com/feeds',
+                'https://www.googleapis.com/auth/drive',
+                'https://www.googleapis.com/auth/spreadsheets'
+            ]
+            
+            # NOVAS CREDENCIAIS - nome diferente
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["relatorio_set_out_account"], scopes=scope
+            )
+            
+            client = gspread.authorize(credentials)
+            
             sheet_url = "https://docs.google.com/spreadsheets/d/152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA/edit?gid=804702972#gid=804702972"
             
-            # Converte para formato de exportação CSV
-            csv_url = sheet_url.replace('/edit?gid=', '/export?format=csv&gid=')
-            csv_url = csv_url.split('#')[0]  # Remove fragmentos
+            # Abre a planilha pela URL
+            spreadsheet = client.open_by_url(sheet_url)
             
-            # Carrega os dados
-            df = pd.read_csv(csv_url)
-            st.sidebar.success("✅ Dados carregados do Google Sheets")
-            return clean_data(df)
+            # Pega a primeira aba
+            worksheet = spreadsheet.sheet1
+            
+            # Obtém TODOS os valores
+            all_values = worksheet.get_all_values()
+            
+            if len(all_values) > 1:
+                headers = all_values[0]
+                data = all_values[1:]
+                df = pd.DataFrame(data, columns=headers)
+                
+                st.sidebar.success("✅ Dados carregados do Google Sheets")
+                return clean_data(df)
+            else:
+                st.sidebar.warning("Planilha vazia")
+                return pd.DataFrame()  # Retorna DataFrame vazio
             
         except Exception as e:
-            st.sidebar.info("📊 Google Sheets indisponível, usando dados de exemplo")
-            return create_sample_data()
+            st.sidebar.info("📊 Google Sheets indisponível")
+            return pd.DataFrame()  # Retorna DataFrame vazio
             
     except Exception as e:
-        st.sidebar.info("📋 Usando dados de exemplo")
-        return create_sample_data()
+        st.sidebar.info("📋 Erro ao carregar dados")
+        return pd.DataFrame()  # SEMPRE retorna um DataFrame, nunca None
+    
+def test_relatorio_connection():
+    """Testa a conexão com a planilha relatorio_set_out"""
+    try:
+        scope = ['https://spreadsheets.google.com/feeds']
+        credentials = service_account.Credentials.from_service_account_info(
+            st.secrets["relatorio_set_out_account"], scopes=scope
+        )
+        client = gspread.authorize(credentials)
+        
+        sheet_url = "https://docs.google.com/spreadsheets/d/152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA/edit?gid=804702972#gid=804702972"
+        spreadsheet = client.open_by_url(sheet_url)
+        
+        st.success("✅ Conexão estabelecida com relatorio_set_out!")
+        st.write(f"📊 Título: {spreadsheet.title}")
+        st.write(f"🔗 ID: {spreadsheet.id}")
+        
+        worksheet = spreadsheet.sheet1
+        all_values = worksheet.get_all_values()
+        st.write(f"📈 Total de linhas: {len(all_values)}")
+        st.write(f"📋 Registros (sem cabeçalho): {len(all_values) - 1}")
+                
+        
+        return True
+    except Exception as e:
+        st.error(f"❌ Erro: {e}")
+        return False
+    
+def corrigir_datas(df):
+    """
+    Corrige problemas de conversão de datas do Google Sheets
+    """
+    if 'Data' not in df.columns:
+        return df
+    
+    # Tentar diferentes formatos de data
+    date_formats = [
+        '%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d', 
+        '%d/%m/%y', '%d-%m-%y', '%m/%d/%Y',
+        '%Y/%m/%d'
+    ]
+    
+    for fmt in date_formats:
+        try:
+            df['Data'] = pd.to_datetime(df['Data'], format=fmt, errors='coerce')
+            # Verificar se conseguiu converter alguma data
+            if not df['Data'].isna().all():
+                break
+        except:
+            continue
+    
+    # Se ainda não converteu, tentar método genérico
+    if df['Data'].isna().all():
+        df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
+    
+    # Remover registros com datas inválidas
+    datas_invalidas = df[df['Data'].isna()]
+    if len(datas_invalidas) > 0:
+        df = df.dropna(subset=['Data'])
+    
+    return df
 
 def clean_data(df):
     """Função para limpeza e padronização dos dados"""
     
-    # Converter data
+    # PRIMEIRO: Corrigir as datas
+    df = corrigir_datas(df)
+    
+    # Converter data (fallback)
     date_columns = ['Data', 'DATA', 'data', 'Date', 'date']
     for col in date_columns:
-        if col in df.columns:
+        if col in df.columns and col != 'Data':
             df['Data'] = pd.to_datetime(df[col], errors='coerce')
             break
     
     # Se não encontrou coluna de data, criar uma dummy
-    if 'Data' not in df.columns:
+    if 'Data' not in df.columns or df['Data'].isna().all():
         df['Data'] = pd.to_datetime('today')
     
-    # Preencher valores vazios
+    # Preencher valores vazios, nulos e espaços em branco
     fill_columns = {
         'UF': 'NÃO INFORMADO',
         'Atendente': 'NÃO INFORMADO', 
@@ -81,6 +171,13 @@ def clean_data(df):
     
     for col, default_value in fill_columns.items():
         if col in df.columns:
+            # Converter para string e tratar vários casos
+            df[col] = df[col].astype(str)
+            
+            # Substituir strings vazias, espaços e valores nulos
+            df[col] = df[col].replace(['', ' ', 'nan', 'NaN', 'None', 'null'], default_value)
+            
+            # Também tratar valores nulos do pandas
             df[col] = df[col].fillna(default_value)
     
     return df
@@ -91,8 +188,8 @@ def create_sidebar():
     
     # Botão para forçar atualização
     if st.sidebar.button("🔄 Atualizar Dados do Google Sheets"):
-        st.cache_data.clear()  # Limpa todo o cache
-        st.rerun()  # Recarrega a aplicação
+        st.cache_data.clear()
+        st.rerun()
     
     # Upload de arquivo
     uploaded_file = st.sidebar.file_uploader(
@@ -113,13 +210,12 @@ def get_data_period(df):
     min_date = df['Data'].min()
     max_date = df['Data'].max()
     
-    # Se todas as datas são iguais (apenas um dia)
     if min_date == max_date:
         return f"{min_date.strftime('%d/%m/%Y')} (apenas este dia)"
     else:
         return f"{min_date.strftime('%d/%m/%Y')} a {max_date.strftime('%d/%m/%Y')}"
 
-# NOVA FUNÇÃO PARA FORMATAR PERÍODO FILTRADO
+# FUNÇÃO PARA FORMATAR PERÍODO FILTRADO
 def format_periodo_filtrado(df):
     """
     Formata o período filtrado de forma mais legível
@@ -130,42 +226,10 @@ def format_periodo_filtrado(df):
     min_date = df['Data'].min()
     max_date = df['Data'].max()
     
-    # Se é apenas um dia
     if min_date == max_date:
         return min_date.strftime('%d/%m/%Y')
     else:
         return f"{min_date.strftime('%d/%m/%Y')} a {max_date.strftime('%d/%m/%Y')}"
-
-# FUNÇÃO CORRIGIDA PARA FILTRAR DATAS
-def apply_date_filter(df, date_range):
-    """
-    Aplica filtro de data corretamente, tratando casos de um único dia
-    """
-    if 'Data' not in df.columns:
-        return df
-    
-    # Se não há range selecionado, retorna todos os dados
-    if not date_range:
-        return df
-    
-    # Se selecionou apenas um dia (lista com 1 item)
-    if len(date_range) == 1:
-        single_date = date_range[0]
-        filtered_df = df[df['Data'].dt.date == single_date]
-    
-    # Se selecionou range de datas (lista com 2 itens)
-    elif len(date_range) == 2:
-        start_date, end_date = date_range
-        filtered_df = df[
-            (df['Data'].dt.date >= start_date) & 
-            (df['Data'].dt.date <= end_date)
-        ]
-    
-    else:
-        # Caso inesperado, retorna dados sem filtro
-        return df
-    
-    return filtered_df
 
 # FUNÇÃO MELHORADA PARA GRÁFICO DE EVOLUÇÃO DIÁRIA
 def create_daily_evolution_chart(df):
@@ -255,7 +319,7 @@ def create_daily_evolution_chart(df):
     
     return fig
 
-# NOVA FUNÇÃO PARA ANÁLISE POR MÓDULO - CORRIGIDA
+# FUNÇÃO PARA ANÁLISE POR MÓDULO
 def show_analise_modulos(df):
     """
     Análise detalhada por módulo
@@ -377,7 +441,7 @@ def show_analise_modulos(df):
                        aspect="auto")
         st.plotly_chart(fig, use_container_width=True)
     
-    # Tabela resumo dos módulos - CORRIGIDA
+    # Tabela resumo dos módulos
     st.subheader("📋 Resumo Estatístico por Módulo")
     
     # Criar tabela resumo de forma mais robusta
@@ -414,125 +478,6 @@ def show_analise_modulos(df):
     resumo_modulos = resumo_modulos.sort_values('Total Atendimentos', ascending=False)
     
     st.dataframe(resumo_modulos, use_container_width=True)
-
-# Página principal - COM PERÍODO FILTRADO MELHORADO
-def main():
-    st.title("📊 Dashboard de Atendimentos - IMAP")
-    st.markdown("---")
-    
-    # Sidebar com upload
-    uploaded_file = create_sidebar()
-    
-    # Carregar dados SILENCIOSAMENTE
-    df = load_data(uploaded_file)
-    
-    if df.empty:
-        st.info("""
-        ## 📁 Como usar o dashboard
-        
-        1. **Arquivo local**: Coloque `relatorio_set_out.xls` na mesma pasta deste app
-        2. **Upload**: Ou use o upload na sidebar para um arquivo diferente
-        """)
-        return
-    
-    # Filtros na sidebar
-    st.sidebar.markdown("---")
-    st.sidebar.subheader("🎯 Filtros")
-    
-    # PERÍODO COMPLETO DOS DADOS - APENAS NA SIDEBAR
-    if 'Data' in df.columns and not df.empty:
-        periodo_completo = get_data_period(df)
-        st.sidebar.info(f"**📅 Período completo: {periodo_completo}**")
-    
-    # FILTRO DE DATA CORRIGIDO - SEM INFORMAÇÕES EXTRAS
-    if 'Data' in df.columns:
-        min_date = df['Data'].min().date()
-        max_date = df['Data'].max().date()
-        
-        date_range = st.sidebar.date_input(
-            "Período",
-            [min_date, max_date],
-            min_value=min_date,
-            max_value=max_date
-        )
-        
-        # Aplicar filtro de data usando a função corrigida
-        df_filtered = apply_date_filter(df, date_range)
-        
-    else:
-        df_filtered = df
-    
-    # Filtro de atendentes
-    if 'Atendente' in df_filtered.columns:
-        atendentes = ['Todos'] + sorted(df_filtered['Atendente'].unique().tolist())
-        selected_atendente = st.sidebar.selectbox("Atendente", atendentes)
-        
-        if selected_atendente != 'Todos':
-            df_filtered = df_filtered[df_filtered['Atendente'] == selected_atendente]
-    
-    # Filtro de módulos
-    if 'Modulos' in df_filtered.columns:
-        modulos = ['Todos'] + sorted(df_filtered['Modulos'].unique().tolist())
-        selected_modulo = st.sidebar.selectbox("Módulo", modulos)
-        
-        if selected_modulo != 'Todos':
-            df_filtered = df_filtered[df_filtered['Modulos'] == selected_modulo]
-    
-    # Métricas principais - USANDO DADOS FILTRADOS COM PERÍODO MELHORADO
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        st.metric("Registros filtrados", len(df_filtered))
-    
-    with col2:
-        # PERÍODO FILTRADO MELHORADO - usando a nova função
-        periodo_filtrado = format_periodo_filtrado(df_filtered)
-        
-        # Usar st.write com formatação para garantir que o texto completo seja exibido
-        st.write("**Período filtrado:**")
-        st.write(f"**{periodo_filtrado}**")
-    
-    with col3:
-        dias_registro = df_filtered['Data'].nunique() if 'Data' in df_filtered.columns and not df_filtered.empty else 0
-        st.metric("Dias com registro", dias_registro)
-    
-    with col4:
-        st.metric("Atendentes", df_filtered['Atendente'].nunique() if 'Atendente' in df_filtered.columns else 0)
-    
-    with col5:
-        st.metric("Módulos", df_filtered['Modulos'].nunique() if 'Modulos' in df_filtered.columns else 0)
-    
-    # Indicador de filtros ativos
-    total_original = len(df)
-    total_filtrado = len(df_filtered)
-    
-    if total_filtrado != total_original:
-        st.sidebar.success(f"✅ Filtros ativos: {total_filtrado} de {total_original} registros")
-    
-    # Abas para análises - AGORA COM 5 ABAS
-    st.markdown("---")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "📈 Visão Geral", 
-        "👥 Análise por Colaborador", 
-        "📋 Tipos de Atendimento",
-        "🔧 Análise por Módulo",
-        "📊 Dados"
-    ])
-    
-    with tab1:
-        show_overview(df_filtered)
-    
-    with tab2:
-        show_colaboradores(df_filtered)
-    
-    with tab3:
-        show_tipos_atendimento(df_filtered)
-    
-    with tab4:
-        show_analise_modulos(df_filtered)
-    
-    with tab5:
-        show_dados_completos(df_filtered)
 
 # Função para Visão Geral
 def show_overview(df):
@@ -686,6 +631,168 @@ def show_dados_completos(df):
         file_name=f"atendimentos_filtrados_{datetime.now().strftime('%Y%m%d')}.csv",
         mime="text/csv"
     )
+
+# INTERFACE PRINCIPAL
+def main():
+    st.title("📊 Dashboard de Atendimentos - SAI")
+    st.markdown("---")
+    
+    # Sidebar com upload
+    uploaded_file = create_sidebar()
+    
+    # Carregar dados
+    df = load_data(uploaded_file)
+    
+    if df.empty:
+        st.info("""
+        ## 📁 Como usar o dashboard
+        
+        1. **Arquivo local**: Coloque `relatorio_set_out.xls` na mesma pasta deste app
+        2. **Upload**: Ou use o upload na sidebar para um arquivo diferente
+        """)
+        return
+    
+    # =============================================================================
+    # FILTRO DE DATA CORRIGIDO - NOVA VERSÃO SIMPLIFICADA
+    # =============================================================================
+    
+    st.sidebar.markdown("---")
+    st.sidebar.header("📅 Filtros por Período")
+    
+    if 'Data' in df.columns:
+        # Garantir que as datas são válidas
+        df['Data'] = pd.to_datetime(df['Data'], errors='coerce')
+        df = df.dropna(subset=['Data'])
+        
+        # Obter min e max reais dos dados
+        min_date = df['Data'].min().date()
+        max_date = df['Data'].max().date()
+        
+        st.sidebar.write(f"📊 Período disponível: {min_date.strftime('%d/%m/%Y')} a {max_date.strftime('%d/%m/%Y')}")
+        
+        # Filtro simplificado - usar datas padrão que cobrem TODOS os dados
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            start_date = st.date_input(
+                "Data inicial", 
+                value=min_date,
+                min_value=min_date,
+                max_value=max_date
+            )
+        with col2:
+            end_date = st.date_input(
+                "Data final", 
+                value=max_date,
+                min_value=min_date,
+                max_value=max_date
+            )
+        
+        # Aplicar filtro diretamente
+        mask = (df['Data'].dt.date >= start_date) & (df['Data'].dt.date <= end_date)
+        df_filtered = df[mask]
+        
+        # Mostrar resultado do filtro
+        st.sidebar.success(f"✅ Registros no período: {len(df_filtered)} de {len(df)}")
+        
+    else:
+        df_filtered = df
+        st.sidebar.warning("⚠️ Coluna 'Data' não encontrada nos dados")
+    
+    # =============================================================================
+    # FILTROS ADICIONAIS
+    # =============================================================================
+    
+    st.sidebar.header("🎯 Filtros Adicionais")
+    
+    # Filtro de atendentes
+    if 'Atendente' in df_filtered.columns:
+        atendentes = ['Todos'] + sorted(df_filtered['Atendente'].unique().tolist())
+        selected_atendente = st.sidebar.selectbox("Atendente", atendentes)
+        
+        if selected_atendente != 'Todos':
+            df_filtered = df_filtered[df_filtered['Atendente'] == selected_atendente]
+    
+    # Filtro de módulos
+    if 'Modulos' in df_filtered.columns:
+        modulos = ['Todos'] + sorted(df_filtered['Modulos'].unique().tolist())
+        selected_modulo = st.sidebar.selectbox("Módulo", modulos)
+        
+        if selected_modulo != 'Todos':
+            df_filtered = df_filtered[df_filtered['Modulos'] == selected_modulo]
+    
+    # Filtro de UF
+    if 'UF' in df_filtered.columns:
+        uf_options = ['TODOS'] + sorted(df_filtered['UF'].unique().tolist())
+        selected_uf = st.sidebar.selectbox("📍 UF", uf_options)
+        if selected_uf != 'TODOS':
+            df_filtered = df_filtered[df_filtered['UF'] == selected_uf]
+    
+    # Filtro de Categorias
+    if 'Categorias' in df_filtered.columns:
+        categoria_options = ['TODAS'] + sorted(df_filtered['Categorias'].unique().tolist())
+        selected_categoria = st.sidebar.selectbox("📂 Categoria", categoria_options)
+        if selected_categoria != 'TODAS':
+            df_filtered = df_filtered[df_filtered['Categorias'] == selected_categoria]
+    
+    # =============================================================================
+    # MÉTRICAS PRINCIPAIS
+    # =============================================================================
+    
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        st.metric("Registros filtrados", len(df_filtered))
+    
+    with col2:
+        periodo_filtrado = format_periodo_filtrado(df_filtered)
+        st.write("**Período filtrado:**")
+        st.write(f"**{periodo_filtrado}**")
+    
+    with col3:
+        dias_registro = df_filtered['Data'].nunique() if 'Data' in df_filtered.columns and not df_filtered.empty else 0
+        st.metric("Dias com registro", dias_registro)
+    
+    with col4:
+        st.metric("Atendentes", df_filtered['Atendente'].nunique() if 'Atendente' in df_filtered.columns else 0)
+    
+    with col5:
+        st.metric("Módulos", df_filtered['Modulos'].nunique() if 'Modulos' in df_filtered.columns else 0)
+    
+    # Indicador de filtros ativos
+    total_original = len(df)
+    total_filtrado = len(df_filtered)
+    
+    if total_filtrado != total_original:
+        st.sidebar.success(f"✅ Filtros ativos: {total_filtrado} de {total_original} registros")
+    
+    # =============================================================================
+    # ABAS PARA ANÁLISES
+    # =============================================================================
+    
+    st.markdown("---")
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📈 Visão Geral", 
+        "👥 Análise por Colaborador", 
+        "📋 Tipos de Atendimento",
+        "🔧 Análise por Módulo",
+        "📊 Dados"
+    ])
+    
+    with tab1:
+        show_overview(df_filtered)
+    
+    with tab2:
+        show_colaboradores(df_filtered)
+    
+    with tab3:
+        show_tipos_atendimento(df_filtered)
+    
+    with tab4:
+        show_analise_modulos(df_filtered)
+    
+    with tab5:
+        show_dados_completos(df_filtered)
+    
 
 if __name__ == "__main__":
     main()
