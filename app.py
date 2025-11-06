@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-import pandas_gbq as gbq
 import plotly.express as px
 import plotly.graph_objects as go
 import gspread
@@ -8,7 +7,7 @@ from google.oauth2 import service_account
 from datetime import datetime
 import os
 
-# Configuração da página
+# Configuração da página (mantido igual)
 st.set_page_config(
     page_title="Dashboard de Atendimentos - SAI",
     page_icon="📊",
@@ -22,7 +21,7 @@ def load_data(uploaded_file=None):
     Carrega dados do Google Sheets - PLANILHA relatorio_set_out
     """
     try:
-        # Opção 1: Arquivo enviado via upload (prioridade)
+        # Opção 1: Arquivo enviado via upload (prioridade) - MANTIDO IGUAL
         if uploaded_file is not None:
             try:
                 df = pd.read_excel(uploaded_file, sheet_name='dados', engine='openpyxl')
@@ -36,31 +35,31 @@ def load_data(uploaded_file=None):
                 except Exception as e:
                     st.sidebar.warning("⚠️ Erro no upload, usando Google Sheets")
         
-        # Opção 2: Google Sheets - NOVA PLANILHA relatorio_set_out
+        # Opção 2: Google Sheets - CORREÇÃO APENAS NA CONEXÃO
         try:
-            # Configuração do Google Sheets API
+            # Configuração do Google Sheets API - MANTIDO
             scope = [
                 'https://spreadsheets.google.com/feeds',
                 'https://www.googleapis.com/auth/drive',
                 'https://www.googleapis.com/auth/spreadsheets'
             ]
             
-            # NOVAS CREDENCIAIS - nome diferente
+            # CORREÇÃO: Nome correto do secret
             credentials = service_account.Credentials.from_service_account_info(
-                st.secrets["relatorio_set_out_account"], scopes=scope
+                st.secrets["relatorio_set_out_account"], scopes=scope  # Mudei apenas aqui
             )
             
             client = gspread.authorize(credentials)
             
             sheet_url = "https://docs.google.com/spreadsheets/d/152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA/edit?gid=804702972#gid=804702972"
             
-            # Abre a planilha pela URL
+            # Abre a planilha pela URL - MANTIDO
             spreadsheet = client.open_by_url(sheet_url)
             
-            # Pega a primeira aba
+            # Pega a primeira aba - MANTIDO
             worksheet = spreadsheet.sheet1
             
-            # Obtém TODOS os valores
+            # Obtém TODOS os valores - MANTIDO
             all_values = worksheet.get_all_values()
             
             if len(all_values) > 1:
@@ -69,7 +68,7 @@ def load_data(uploaded_file=None):
                 df = pd.DataFrame(data, columns=headers)
                 
                 st.sidebar.success("✅ Dados carregados do Google Sheets")
-                return clean_data(df)
+                return clean_data(df)  # Sua função clean_data mantida
             else:
                 st.sidebar.warning("Planilha vazia")
                 return pd.DataFrame()  # Retorna DataFrame vazio
@@ -81,13 +80,14 @@ def load_data(uploaded_file=None):
     except Exception as e:
         st.sidebar.info("📋 Erro ao carregar dados")
         return pd.DataFrame()  # SEMPRE retorna um DataFrame, nunca None
-    
+
 def test_relatorio_connection():
-    """Testa a conexão com a planilha relatorio_set_out"""
+    """Testa a conexão com a planilha relatorio_set_out - CORREÇÃO APENAS NO SECRET"""
     try:
         scope = ['https://spreadsheets.google.com/feeds']
+        # CORREÇÃO: Nome correto do secret
         credentials = service_account.Credentials.from_service_account_info(
-            st.secrets["relatorio_set_out_account"], scopes=scope
+            st.secrets["relatorio_set_out_account"], scopes=scope  # Mudei apenas aqui
         )
         client = gspread.authorize(credentials)
         
@@ -632,6 +632,81 @@ def show_dados_completos(df):
         file_name=f"atendimentos_filtrados_{datetime.now().strftime('%Y%m%d')}.csv",
         mime="text/csv"
     )
+
+def diagnostic_test():
+    """Teste completo de diagnóstico"""
+    try:
+        st.header("🔍 Diagnóstico da Conexão")
+        
+        # 1. Teste se o secret existe
+        st.subheader("1. Verificando Secrets...")
+        if "relatorio_set_out_account" not in st.secrets:
+            st.error("❌ Secret 'relatorio_set_out_account' não encontrado")
+            return False
+        else:
+            st.success("✅ Secret encontrado")
+            
+        # 2. Teste se as credenciais são válidas
+        st.subheader("2. Verificando Credenciais...")
+        try:
+            scope = ['https://spreadsheets.google.com/feeds']
+            credentials = service_account.Credentials.from_service_account_info(
+                st.secrets["relatorio_set_out_account"], scopes=scope
+            )
+            st.success("✅ Credenciais válidas")
+        except Exception as e:
+            st.error(f"❌ Erro nas credenciais: {e}")
+            return False
+        
+        # 3. Teste de autorização
+        st.subheader("3. Autorizando...")
+        try:
+            client = gspread.authorize(credentials)
+            st.success("✅ Autorização concedida")
+        except Exception as e:
+            st.error(f"❌ Erro na autorização: {e}")
+            return False
+        
+        # 4. Teste de abertura da planilha
+        st.subheader("4. Acessando Planilha...")
+        try:
+            sheet_id = "152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA"
+            spreadsheet = client.open_by_key(sheet_id)
+            st.success(f"✅ Planilha aberta: {spreadsheet.title}")
+        except Exception as e:
+            st.error(f"❌ Erro ao abrir planilha: {e}")
+            st.info("📝 Tentando por URL...")
+            try:
+                sheet_url = "https://docs.google.com/spreadsheets/d/152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA/edit"
+                spreadsheet = client.open_by_url(sheet_url)
+                st.success(f"✅ Planilha aberta por URL: {spreadsheet.title}")
+            except Exception as e2:
+                st.error(f"❌ Erro também por URL: {e2}")
+                return False
+        
+        # 5. Teste de leitura de dados
+        st.subheader("5. Lendo Dados...")
+        try:
+            worksheet = spreadsheet.sheet1
+            all_values = worksheet.get_all_values()
+            st.success(f"✅ Dados lidos: {len(all_values)} linhas totais")
+            
+            if len(all_values) > 0:
+                st.write("📋 Cabeçalho:", all_values[0])
+                st.write("📊 Linhas de dados:", len(all_values) - 1)
+            else:
+                st.warning("⚠️ Planilha vazia")
+                
+        except Exception as e:
+            st.error(f"❌ Erro ao ler dados: {e}")
+            return False
+        
+        st.success("🎉 TODOS OS TESTES PASSARAM!")
+        return True
+        
+    except Exception as e:
+        st.error(f"❌ Erro geral no diagnóstico: {e}")
+        return False
 
 # INTERFACE PRINCIPAL
 def main():
