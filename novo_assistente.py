@@ -26,23 +26,37 @@ def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
         print(f"📋 Colunas: {df_filtrado.columns.tolist()}")
 
         # 1. Configurar Gemini - FORMA CORRIGIDA
+
+        print("=== DEBUG SECRETS ===")
+        print("Todos os secrets disponíveis:", list(st.secrets.keys()))
+        gemini_key = None
+
         try:
             gemini_key = st.secrets.gemini.api_key
             print("✅ Chave Gemini carregada da seção [gemini]")
-        except:
+        except Exception as e1:
+            print(f"❌ Falha na seção [gemini]: {e1}")
+
             try:
                 gemini_key = st.secrets["GEMINI_API_KEY"]
                 print("✅ Chave Gemini carregada diretamente")
-            except:
+            except Exception as e2:
+                print(f"❌ Falha direta: {e2}")
+
                 try:
                     gemini_key = config('GEMINI_API_KEY')
                     print("✅ Chave Gemini carregada do .env")
-                except:
+                except Exception as e3:
+                    print(f"❌ Falha .env: {e3}")
+                    
                     gemini_key = None
-                    print("❌ Chave Gemini não encontrada")
+                    
 
         if not gemini_key:
-            return "🔑 **Configuração necessária:** Adicione `GEMINI_API_KEY` nas Secrets do Streamlit"
+            print(f"🔑 Chave encontrada: {gemini_key[:20]}...")
+        else:
+            print("❌ NENHUMA chave Gemini encontrada!")
+            return "🔑 **Configuração necessária:** Adicione `GEMINI_API_KEY` nas Secrets do Streamlit. Verifique o nome da chave."    
 
         genai.configure(api_key=gemini_key)
 
