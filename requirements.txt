@@ -1,10 +1,18 @@
+# Pacotes Streamlit e de dados
 streamlit>=1.28.0
 pandas>=2.1.0
 plotly>=5.15.0
+openpyxl>=3.1.2
+
+# Pacotes do Google Sheets
 gspread>=6.0.0
 google-auth>=2.23.0
 google-api-python-client>=2.100.0
-oauth2client>=4.1.3
-openpyxl>=3.1.2
-google-generativeai>=0.3.0
+# Removido oauth2client (Gspread e Google-auth já devem ser suficientes)
+
+# Pacotes Gemini (SDK Mais Novo)
+google-genai # Usando a versão mais recente recomendada
+# Se quiser usar o SDK antigo: google-generativeai>=0.3.0
+
+# Utilitários
 python-dotenv
