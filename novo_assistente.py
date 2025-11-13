@@ -86,7 +86,7 @@ def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro", gemini
 
         RESPOSTA:
         """
-        
+
         # 6. Fazer consulta
         response = model.generate_content(prompt)
         print(f"✅ Resposta completa recebida!")
@@ -593,8 +593,8 @@ def analise_local_supercompleta(pergunta, df_filtrado, is_fallback_mode=False):
                 resposta += f"• **Canal principal:** {canal_principal.index[0]} ({canal_principal.iloc[0]} atendimentos)\n"
         
         if is_fallback_mode:
-             resposta += "\n🔑 **ERRO DE CONFIGURAÇÃO:** A chave Gemini não foi encontrada, é inválida, ou o Streamlit falhou na comunicação. "
-             resposta += "Por favor, configure a `GEMINI_API_KEY` no seu arquivo `.env` para análises completas com IA."
+            resposta += "\n🔑 **ERRO DE CONFIGURAÇÃO:** A chave Gemini não foi encontrada, é inválida, ou o Streamlit falhou na comunicação. "
+            resposta += "Por favor, configure a `GEMINI_API_KEY` no seu **secrets.toml** do Streamlit Cloud para análises completas com IA."
         
         return resposta
         

@@ -815,10 +815,11 @@ def show_assistente_ia(df_filtrado, gemini_key=None):
                     
                     # Executar consulta com os dados pendentes
                     resposta = consultar_assistente(
-                        pergunta=st.session_state.pending_question, 
+                        pergunta=st.session_state.pending_question,
                         df_filtrado=df_filtrado,
-                        tipo_modelo=st.session_state.pending_model
+                        tipo_modelo=st.session_state.pending_model,
                         gemini_key=gemini_key
+
                     )
                     
                     # Salvar no histórico
