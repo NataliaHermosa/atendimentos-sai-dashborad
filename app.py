@@ -707,6 +707,171 @@ def diagnostic_test():
     except Exception as e:
         st.error(f"❌ Erro geral no diagnóstico: {e}")
         return False
+    
+# =============================================================================
+# FUNÇÃO DO ASSISTENTE IA 
+# =============================================================================
+
+def show_assistente_ia(df_filtrado):
+    """Exibe a interface do assistente de IA com dados filtrados - VERSÃO FINAL CORRIGIDA"""
+    st.header("🤖 Assistente de IA - Análise de Atendimentos")
+    st.write("Faça perguntas em português sobre os dados de atendimentos e receba insights automatizados.")
+    
+    # Inicializar estado da sessão PARA O ASSISTENTE ESPECIFICAMENTE
+    if 'assistant_responses' not in st.session_state:
+        st.session_state.assistant_responses = []
+    if 'current_question' not in st.session_state:
+        st.session_state.current_question = ""
+    if 'last_response' not in st.session_state:
+        st.session_state.last_response = ""
+    if 'processing_question' not in st.session_state:
+        st.session_state.processing_question = False
+    if 'assistant_initialized' not in st.session_state:
+        st.session_state.assistant_initialized = True      
+   
+    # Configuração do modelo
+    model_options = [
+        '🚀 Gemini Pro - Análise Avançada',
+        '⚡ Gemini Flash - Resposta Rápida' 
+    ]
+
+    col1, col2 = st.columns([2, 1])
+
+    with col1:
+        selected_model = st.selectbox(
+            label='**Nível de análise:**',
+            options=model_options,
+            index=0,
+            key='assistant_model'
+        )
+    
+        if selected_model == '🚀 Gemini Pro - Análise Avançada':
+            st.caption("💡 Análises profundas e insights detalhados")
+        elif selected_model == '⚡ Gemini Flash - Resposta Rápida':
+            st.caption("💡 Respostas rápidas para perguntas simples")
+    
+    with col2:
+        st.write("")
+        st.write("")
+        if st.button("🔄 Limpar Histórico", key='reset_assistant'):
+            st.session_state.assistant_responses = []
+            st.session_state.last_response = ""
+            st.session_state.current_question = ""
+            st.session_state.processing_question = False
+            st.success("✅ Histórico limpo!")
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # Área de pergunta - SEMPRE mostrar o valor atual
+    user_question = st.text_area(
+        '**Digite sua pergunta:**',
+        placeholder='Ex: Existe algum padrão sazonal nos atendimentos? Quais são os módulos com mais atendimentos? Quem são os top atendentes?',
+        height=100,
+        key='assistant_question',
+        value=st.session_state.current_question
+    )
+    
+    # Atualizar a pergunta atual no session_state
+    st.session_state.current_question = user_question
+    
+    col1, col2 = st.columns([1, 4])
+    
+    with col1:
+        consultar_button = st.button('🔍 Consultar Assistente', type='primary', key='assistant_btn', use_container_width=True)
+    
+    with col2:
+        if st.session_state.last_response and not st.session_state.processing_question:
+            if st.button('📋 Copiar Resposta', key='copy_response', use_container_width=True):
+                st.code(st.session_state.last_response, language='markdown')
+                st.success("✅ Resposta copiada para a área de transferência!")
+    
+    # VERIFICAR SE HÁ UMA CONSULTA PENDENTE PARA PROCESSAR
+    if consultar_button and user_question and not st.session_state.processing_question:
+        # Marcar que estamos processando
+        st.session_state.processing_question = True
+        st.session_state.current_question = user_question
+        
+        # Armazenar a pergunta para processamento
+        st.session_state.pending_question = user_question
+        st.session_state.pending_model = selected_model
+        
+        # Forçar rerun imediatamente para mostrar o spinner
+        st.rerun()
+    
+    # PROCESSAR A CONSULTA APÓS O RERUN (quando processing_question = True)
+    if st.session_state.get('processing_question', False) and st.session_state.get('pending_question'):
+        # Container para o spinner
+        processing_placeholder = st.empty()
+        
+        with processing_placeholder.container():
+            with st.spinner('🤔 Analisando os dados filtrados... Isso pode levar alguns segundos'):
+                try:
+                    # Importar e criar assistente
+                    from novo_assistente import consultar_assistente
+                    
+                    # Executar consulta com os dados pendentes
+                    resposta = consultar_assistente(
+                        pergunta=st.session_state.pending_question, 
+                        df_filtrado=df_filtrado,
+                        tipo_modelo=st.session_state.pending_model
+                    )
+                    
+                    # Salvar no histórico
+                    nova_resposta = {
+                        'pergunta': st.session_state.pending_question,
+                        'resposta': resposta,
+                        'modelo': st.session_state.pending_model,
+                        'timestamp': datetime.now().strftime('%d/%m/%Y %H:%M'),
+                        'registros': len(df_filtrado)
+                    }
+                    
+                    st.session_state.assistant_responses.append(nova_resposta)
+                    st.session_state.last_response = resposta
+                    
+                except Exception as e:
+                    error_msg = f"❌ Erro ao consultar assistente: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.last_response = error_msg
+        
+        # Limpar estados de processamento
+        st.session_state.processing_question = False
+        st.session_state.pending_question = None
+        st.session_state.pending_model = None
+        
+        # Limpar o placeholder do spinner
+        processing_placeholder.empty()
+        
+        # Rerun final para mostrar a resposta
+        st.rerun()
+    
+    # MOSTRAR RESPOSTAS - APENAS quando não estiver processando
+    if not st.session_state.processing_question:
+        # Mostrar última resposta
+        if st.session_state.last_response:
+            st.markdown("---")
+            st.subheader("📋 Resposta:")
+            st.markdown(st.session_state.last_response)
+            
+            # Informações do contexto
+            with st.expander("ℹ️ Informações do contexto"):
+                st.write(f"**Modelo usado:** {selected_model}")
+                st.write(f"**Registros analisados:** {len(df_filtrado)}")
+                st.write(f"**Data/hora:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        
+        # Mostrar histórico de conversas
+        if len(st.session_state.assistant_responses) > 1:
+            st.markdown("---")
+            st.subheader("📚 Histórico de Consultas")
+            
+            # Mostrar do mais recente para o mais antigo (exceto o último que já está mostrado)
+            for i, resp in enumerate(reversed(st.session_state.assistant_responses[:-1])):
+                with st.expander(f"🗨️ {resp['pergunta'][:50]}... - {resp['timestamp']}"):
+                    st.write(f"**Pergunta:** {resp['pergunta']}")
+                    st.markdown("**Resposta:**")
+                    st.markdown(resp['resposta'])
+                    st.caption(f"Modelo: {resp['modelo']} | Registros: {resp['registros']} | {resp['timestamp']}")
+
 
 # INTERFACE PRINCIPAL
 def main():
@@ -846,12 +1011,13 @@ def main():
     # =============================================================================
     
     st.markdown("---")
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📈 Visão Geral", 
         "👥 Análise por Colaborador", 
         "📋 Tipos de Atendimento",
         "🔧 Análise por Módulo",
-        "📊 Dados"
+        "📊 Dados",
+        "🤖 Assistente IA"
     ])
     
     with tab1:
@@ -868,6 +1034,9 @@ def main():
     
     with tab5:
         show_dados_completos(df_filtered)
+
+    with tab6:  
+        show_assistente_ia(df_filtered)
     
 
 if __name__ == "__main__":
