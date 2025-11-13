@@ -1,3 +1,5 @@
+from dotenv import load_dotenv
+load_dotenv()
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -6,6 +8,7 @@ import gspread
 from google.oauth2 import service_account
 from datetime import datetime
 import os
+from google import genai
 
 # Configuração da página (mantido igual)
 st.set_page_config(

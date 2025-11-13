@@ -1,73 +1,50 @@
 import google.generativeai as genai
-from decouple import config
 import pandas as pd
 from datetime import datetime
 import numpy as np
+import os
 
 def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
     """
-    Função CORRIGIDA com melhor tratamento de erros
+    Função CORRIGIDA para inicializar o Gemini e fazer a consulta.
+    Trata a chave de API usando 'os.getenv', que busca a chave carregada em app.py.
     """
+    
+    # 1. VERIFICAÇÃO INICIAL DA CHAVE
+    gemini_key = os.getenv('GEMINI_API_KEY')
+    
+    if not gemini_key:
+        print("❌ NENHUMA chave GEMINI_API_KEY encontrada no ambiente!")
+        # Se a chave falhar, ativa o fallback com o flag de modo de erro
+        return analise_local_supercompleta(pergunta, df_filtrado, is_fallback_mode=True)
+    
+    # Se a chave for encontrada, configurar o Gemini
+    try:
+        genai.configure(api_key=gemini_key)
+        print(f"🔑 Gemini configurado com sucesso (Chave: {gemini_key[:20]}...)")
+    except Exception as e:
+        print(f"❌ Erro na configuração do Gemini, chave inválida: {e}")
+        # Se a chave foi encontrada, mas é inválida, usa o fallback com o flag de modo de erro
+        return analise_local_supercompleta(pergunta, df_filtrado, is_fallback_mode=True)
+
+
     try:
         print(f"🔍 Consultando Gemini: {pergunta}")
-        print(f"📊 Tipo de dados recebidos: {type(df_filtrado)}")
         
-        # Verificação ROBUSTA do DataFrame
-        if isinstance(df_filtrado, str):
-            return f"❌ Erro: Recebida string em vez de DataFrame. Conteúdo: {df_filtrado[:100]}..."
-        
-        if not isinstance(df_filtrado, pd.DataFrame):
-            return f"❌ Erro: Tipo de dados inválido. Esperado DataFrame, recebido: {type(df_filtrado)}"
-        
-        if df_filtrado.empty:
+        # Verificação ROBUSTA do DataFrame (mantida)
+        if not isinstance(df_filtrado, pd.DataFrame) or df_filtrado.empty:
             return "❌ Não há dados para análise com os filtros atuais."
         
-        print(f"✅ DataFrame válido: {len(df_filtrado)} registros, {len(df_filtrado.columns)} colunas")
-        print(f"📋 Colunas: {df_filtrado.columns.tolist()}")
-
-        # 1. Configurar Gemini - FORMA CORRIGIDA
-        print("=== DEBUG SECRETS ===")
-        print("Todos os secrets disponíveis:", list(st.secrets.keys()))
-        
-        gemini_key = None
-
-        try:
-            gemini_key = st.secrets.gemini.api_key
-            print("✅ Chave Gemini carregada da seção [gemini]")
-        except Exception as e1:
-            print(f"❌ Falha na seção [gemini]: {e1}")
-            
-            try:
-                gemini_key = st.secrets["GEMINI_API_KEY"]
-                print("✅ Chave Gemini carregada diretamente")
-            except Exception as e2:
-                print(f"❌ Falha direta: {e2}")
-                
-                try:
-                    gemini_key = config('GEMINI_API_KEY')
-                    print("✅ Chave Gemini carregada do .env")
-                except Exception as e3:
-                    print(f"❌ Falha .env: {e3}")
-                    gemini_key = None
-
-        # CORREÇÃO: Esta parte estava com a lógica invertida
-        if gemini_key:
-            print(f"🔑 Chave encontrada: {gemini_key[:20]}...")
-            genai.configure(api_key=gemini_key)
-        else:
-            print("❌ NENHUMA chave Gemini encontrada!")
-            return "🔑 **Configuração necessária:** Adicione `GEMINI_API_KEY` nas Secrets do Streamlit. Verifique o nome da chave."
-
         # 2. Escolher modelo
-        modelo_gemini = "models/gemini-2.0-flash-001"
+        modelo_gemini = "gemini-2.5-pro" if "Pro" in tipo_modelo else "gemini-2.5-flash"
 
         # 3. Criar relatório COMPLETO
         relatorio_completo = criar_relatorio_supercompleto(df_filtrado, pergunta)
 
-        # 4. Configurar o modelo
+        # 4. Configurar e chamar o modelo
         model = genai.GenerativeModel(modelo_gemini)
 
-        # 5. Prompt ESPECIALIZADO - MAIS INTELIGENTE
+        # 5. Prompt ESPECIALIZADO - (Ajuste o prompt conforme necessário)
         prompt = f"""
         VOCÊ: Especialista em análise completa de dados de atendimentos ao cliente
 
@@ -82,7 +59,7 @@ def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
         - Cliente: Nome do cliente
         - Nucleos: Núcleos/Departamentos
         - Produtos: Produtos relacionados
-        - Categorias: Categoria do atendimento  
+        - Categorias: Categoria do atendimento  
         - Tipos: Tipo específico do atendimento
         - Atendimento: Descrição detalhada
         - Atendente: Quem realizou o atendimento
@@ -119,14 +96,14 @@ def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
 
         RESPOSTA:
         """
-
         # 6. Fazer consulta
         response = model.generate_content(prompt)
         print(f"✅ Resposta completa recebida!")
         return response.text
 
     except Exception as e:
-        print(f"❌ Erro no Gemini: {e}")
+        print(f"❌ Erro na API do Gemini durante a chamada: {e}")
+        # Se houver um erro de conexão ou qualquer outro erro da API, usa o fallback local sem o flag de modo de erro
         return analise_local_supercompleta(pergunta, df_filtrado)
 
 def criar_relatorio_supercompleto(df, pergunta):
@@ -538,25 +515,23 @@ def detectar_anomalias(df):
     
     return insights
 
-def analise_local_supercompleta(pergunta, df_filtrado):
-    """Fallback completo CORRIGIDO para análise local"""
+def analise_local_supercompleta(pergunta, df_filtrado, is_fallback_mode=False):
+    """
+    Fallback completo para análise local.
+    A mensagem de erro da API só é incluída se is_fallback_mode for True.
+    """
     try:
         print(f"🔧 Entrando no fallback local - Tipo: {type(df_filtrado)}")
         
-        # VERIFICAÇÃO ROBUSTA
-        if isinstance(df_filtrado, str):
-            return f"❌ Erro: Sistema recebeu texto em vez de dados. Conteúdo: {df_filtrado[:200]}..."
-        
-        if not isinstance(df_filtrado, pd.DataFrame):
-            return f"❌ Erro: Tipo de dados inválido para análise. Recebido: {type(df_filtrado)}"
-        
-        if df_filtrado.empty:
-            return "📭 Não há dados disponíveis para análise com os filtros atuais."
+        # ... (suas verificações robustas) ...
+        if not isinstance(df_filtrado, pd.DataFrame) or df_filtrado.empty:
+             return "📭 Não há dados disponíveis para análise com os filtros atuais."
         
         print(f"✅ Fallback local com {len(df_filtrado)} registros")
         
         pergunta_lower = pergunta.lower()
-        resposta = "📊 **Análise Local Detalhada:**\n\n"
+        # Alterei o título para indicar que é um fallback
+        resposta = "📊 **Análise Local Detalhada (Modo Fallback):**\n\n"
         
         # 🆕 DETECÇÃO DE ANOMALIAS NO FALLBACK
         anomalias = detectar_anomalias(df_filtrado)
@@ -626,7 +601,9 @@ def analise_local_supercompleta(pergunta, df_filtrado):
             if len(canal_principal) > 0:
                 resposta += f"• **Canal principal:** {canal_principal.index[0]} ({canal_principal.iloc[0]} atendimentos)\n"
         
-        resposta += "\n💡 **Dica:** Configure a GEMINI_API_KEY no arquivo .env para análises completas com IA."
+        if is_fallback_mode:
+             resposta += "\n🔑 **ERRO DE CONFIGURAÇÃO:** A chave Gemini não foi encontrada, é inválida, ou o Streamlit falhou na comunicação. "
+             resposta += "Por favor, configure a `GEMINI_API_KEY` no seu arquivo `.env` para análises completas com IA."
         
         return resposta
         
