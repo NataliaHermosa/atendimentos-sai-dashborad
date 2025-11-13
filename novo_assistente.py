@@ -25,10 +25,24 @@ def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
         print(f"✅ DataFrame válido: {len(df_filtrado)} registros, {len(df_filtrado.columns)} colunas")
         print(f"📋 Colunas: {df_filtrado.columns.tolist()}")
 
-        # 1. Configurar Gemini
-        gemini_key = config('GEMINI_API_KEY')
+        # 1. Configurar Gemini - FORMA CORRIGIDA
+        try:
+            gemini_key = st.secrets.gemini.api_key
+            print("✅ Chave Gemini carregada da seção [gemini]")
+        except:
+            try:
+                gemini_key = st.secrets["GEMINI_API_KEY"]
+                print("✅ Chave Gemini carregada diretamente")
+            except:
+                try:
+                    gemini_key = config('GEMINI_API_KEY')
+                    print("✅ Chave Gemini carregada do .env")
+                except:
+                    gemini_key = None
+                    print("❌ Chave Gemini não encontrada")
+
         if not gemini_key:
-            return "🔑 Adicione GEMINI_API_KEY no arquivo .env"
+            return "🔑 **Configuração necessária:** Adicione `GEMINI_API_KEY` nas Secrets do Streamlit"
 
         genai.configure(api_key=gemini_key)
 
