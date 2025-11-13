@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -8,9 +6,8 @@ import gspread
 from google.oauth2 import service_account
 from datetime import datetime
 import os
-from google import genai
 
-# Configuração da página (mantido igual)
+# Configuração da página
 st.set_page_config(
     page_title="Dashboard de Atendimentos - SAI",
     page_icon="📊",
@@ -24,7 +21,7 @@ def load_data(uploaded_file=None):
     Carrega dados do Google Sheets - PLANILHA relatorio_set_out
     """
     try:
-        # Opção 1: Arquivo enviado via upload (prioridade) - MANTIDO IGUAL
+        # Opção 1: Arquivo enviado via upload (prioridade)
         if uploaded_file is not None:
             try:
                 df = pd.read_excel(uploaded_file, sheet_name='dados', engine='openpyxl')
@@ -38,59 +35,78 @@ def load_data(uploaded_file=None):
                 except Exception as e:
                     st.sidebar.warning("⚠️ Erro no upload, usando Google Sheets")
         
-        # Opção 2: Google Sheets - CORREÇÃO APENAS NA CONEXÃO
+        # Opção 2: Google Sheets - NOVA PLANILHA relatorio_set_out
         try:
-            # Configuração do Google Sheets API - MANTIDO
+            # Configuração do Google Sheets API
             scope = [
                 'https://spreadsheets.google.com/feeds',
                 'https://www.googleapis.com/auth/drive',
                 'https://www.googleapis.com/auth/spreadsheets'
             ]
             
-            # CORREÇÃO: Nome correto do secret
+            # NOVAS CREDENCIAIS - nome diferente
             credentials = service_account.Credentials.from_service_account_info(
-                st.secrets["relatorio_set_out_account"], scopes=scope  # Mudei apenas aqui
+                st.secrets["relatorio_set_out_account"], scopes=scope
             )
             
             client = gspread.authorize(credentials)
             
             sheet_url = "https://docs.google.com/spreadsheets/d/152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA/edit?gid=804702972#gid=804702972"
             
-            # Abre a planilha pela URL - MANTIDO
+            # Abre a planilha pela URL
             spreadsheet = client.open_by_url(sheet_url)
             
-            # Pega a primeira aba - MANTIDO
+            # Pega a primeira aba (ajuste se necessário)
             worksheet = spreadsheet.sheet1
             
-            # Obtém TODOS os valores - MANTIDO
+            # Obtém TODOS os valores
             all_values = worksheet.get_all_values()
+            
+            st.sidebar.write(f"📊 Planilha: {spreadsheet.title}")
+            st.sidebar.write(f"📏 Dimensões: {worksheet.row_count} linhas × {worksheet.col_count} colunas")
+            st.sidebar.write(f"🔍 Linhas encontradas: {len(all_values)}")
             
             if len(all_values) > 1:
                 headers = all_values[0]
                 data = all_values[1:]
                 df = pd.DataFrame(data, columns=headers)
                 
-                st.sidebar.success("✅ Dados carregados do Google Sheets")
-                return clean_data(df)  # Sua função clean_data mantida
+                # DEBUG: Mostrar dados brutos
+                st.sidebar.write("📋 DEBUG - Dados brutos (primeiras 2 linhas):")
+                st.sidebar.write(df.head(2))
+                if 'Data' in df.columns:
+                    st.sidebar.write(f"📅 Amostra de datas brutas: {df['Data'].head(3).tolist()}")
+                
+                st.sidebar.success(f"✅ Dados carregados: {len(df)} registros")
+                
+                # Verificação de quantidade
+                if len(df) >= 1300:
+                    st.sidebar.success("🎉 Todos os registros foram carregados!")
+                elif len(df) > 586:
+                    st.sidebar.success(f"📈 Melhoria: {len(df)} registros (antes: 586)")
+                else:
+                    st.sidebar.info(f"📊 Carregados {len(df)} registros")
+                
+                return clean_data(df)
             else:
-                st.sidebar.warning("Planilha vazia")
-                return pd.DataFrame()  # Retorna DataFrame vazio
+                st.sidebar.warning("Planilha vazia ou apenas cabeçalho")
+                return create_sample_data()
             
         except Exception as e:
-            st.sidebar.info("📊 Google Sheets indisponível")
-            return pd.DataFrame()  # Retorna DataFrame vazio
+            st.sidebar.error(f"❌ Erro Google Sheets: {str(e)}")
+            st.sidebar.info("📋 Usando dados de exemplo")
+            return create_sample_data()
             
     except Exception as e:
-        st.sidebar.info("📋 Erro ao carregar dados")
-        return pd.DataFrame()  # SEMPRE retorna um DataFrame, nunca None
-
+        st.sidebar.error(f"❌ Erro geral: {str(e)}")
+        return create_sample_data()
+    
 def test_relatorio_connection():
-    """Testa a conexão com a planilha relatorio_set_out - CORREÇÃO APENAS NO SECRET"""
+    """Testa a conexão com a planilha relatorio_set_out"""
     try:
         scope = ['https://spreadsheets.google.com/feeds']
-        # CORREÇÃO: Nome correto do secret
         credentials = service_account.Credentials.from_service_account_info(
-            st.secrets["relatorio_set_out_account"], scopes=scope  # Mudei apenas aqui
+            st.secrets["relatorio_set_out_account"], scopes=scope
         )
         client = gspread.authorize(credentials)
         
@@ -105,7 +121,12 @@ def test_relatorio_connection():
         all_values = worksheet.get_all_values()
         st.write(f"📈 Total de linhas: {len(all_values)}")
         st.write(f"📋 Registros (sem cabeçalho): {len(all_values) - 1}")
-                
+        
+        # Mostra as primeiras linhas para confirmar
+        if len(all_values) > 0:
+            st.write("👀 Primeiras linhas:")
+            for i, row in enumerate(all_values[:3]):
+                st.write(f"Linha {i}: {row}")
         
         return True
     except Exception as e:
@@ -119,6 +140,10 @@ def corrigir_datas(df):
     if 'Data' not in df.columns:
         return df
     
+    # DEBUG: Mostrar amostra das datas antes da correção
+    st.sidebar.write("🔍 DEBUG - Datas antes da correção:")
+    st.sidebar.write(df['Data'].head(3))
+    
     # Tentar diferentes formatos de data
     date_formats = [
         '%d/%m/%Y', '%d-%m-%Y', '%Y-%m-%d', 
@@ -131,6 +156,7 @@ def corrigir_datas(df):
             df['Data'] = pd.to_datetime(df['Data'], format=fmt, errors='coerce')
             # Verificar se conseguiu converter alguma data
             if not df['Data'].isna().all():
+                st.sidebar.success(f"✅ Formato detectado: {fmt}")
                 break
         except:
             continue
@@ -142,9 +168,15 @@ def corrigir_datas(df):
     # Remover registros com datas inválidas
     datas_invalidas = df[df['Data'].isna()]
     if len(datas_invalidas) > 0:
+        st.sidebar.warning(f"⚠️ {len(datas_invalidas)} registros com data inválida removidos")
         df = df.dropna(subset=['Data'])
     
+    # DEBUG: Mostrar amostra das datas depois da correção
+    st.sidebar.write("📅 DEBUG - Datas depois da correção:")
+    st.sidebar.write(df['Data'].head(3))
+    
     return df
+
 
 def clean_data(df):
     """Função para limpeza e padronização dos dados"""
@@ -155,15 +187,22 @@ def clean_data(df):
     # Converter data (fallback)
     date_columns = ['Data', 'DATA', 'data', 'Date', 'date']
     for col in date_columns:
-        if col in df.columns and col != 'Data':
+        if col in df.columns and col != 'Data':  # Já corrigimos a coluna 'Data'
             df['Data'] = pd.to_datetime(df[col], errors='coerce')
             break
     
     # Se não encontrou coluna de data, criar uma dummy
     if 'Data' not in df.columns or df['Data'].isna().all():
         df['Data'] = pd.to_datetime('today')
+        st.sidebar.warning("⚠️ Nenhuma data válida encontrada, usando data atual")
     
-    # Preencher valores vazios, nulos e espaços em branco
+    # DEBUG: Mostrar período real após limpeza
+    if 'Data' in df.columns and not df.empty:
+        min_date = df['Data'].min().date()
+        max_date = df['Data'].max().date()
+        st.sidebar.success(f"📅 Período real: {min_date} a {max_date}")
+    
+    # Preencher valores vazios
     fill_columns = {
         'UF': 'NÃO INFORMADO',
         'Atendente': 'NÃO INFORMADO', 
@@ -175,16 +214,23 @@ def clean_data(df):
     
     for col, default_value in fill_columns.items():
         if col in df.columns:
-            # Converter para string e tratar vários casos
-            df[col] = df[col].astype(str)
-            
-            # Substituir strings vazias, espaços e valores nulos
-            df[col] = df[col].replace(['', ' ', 'nan', 'NaN', 'None', 'null'], default_value)
-            
-            # Também tratar valores nulos do pandas
             df[col] = df[col].fillna(default_value)
     
     return df
+
+def create_sample_data():
+    """Cria dados de exemplo"""
+    import datetime
+    sample_data = {
+        'Data': [datetime.datetime.now() - datetime.timedelta(days=x) for x in range(10)],
+        'UF': ['SP', 'RJ', 'MG', 'RS', 'PR'] * 2,
+        'Atendente': ['Ana', 'João', 'Maria', 'Pedro', 'Carla'] * 2,
+        'Categorias': ['Suporte', 'Vendas', 'Financeiro', 'Técnico', 'Outros'] * 2,
+        'Tipos': ['Consulta', 'Problema', 'Sugestão', 'Elogio', 'Reclamação'] * 2,
+        'Modulos': ['Módulo A', 'Módulo B', 'Módulo C'] * 3 + ['Módulo D'],
+        'Canais': ['Chat', 'Email', 'Telefone', 'WhatsApp'] * 2 + ['Chat', 'Email']
+    }
+    return pd.DataFrame(sample_data)
 
 # Componente de upload na sidebar
 def create_sidebar():
@@ -636,250 +682,9 @@ def show_dados_completos(df):
         mime="text/csv"
     )
 
-def diagnostic_test():
-    """Teste completo de diagnóstico"""
-    try:
-        st.header("🔍 Diagnóstico da Conexão")
-        
-        # 1. Teste se o secret existe
-        st.subheader("1. Verificando Secrets...")
-        if "relatorio_set_out_account" not in st.secrets:
-            st.error("❌ Secret 'relatorio_set_out_account' não encontrado")
-            return False
-        else:
-            st.success("✅ Secret encontrado")
-            
-        # 2. Teste se as credenciais são válidas
-        st.subheader("2. Verificando Credenciais...")
-        try:
-            scope = ['https://spreadsheets.google.com/feeds']
-            credentials = service_account.Credentials.from_service_account_info(
-                st.secrets["relatorio_set_out_account"], scopes=scope
-            )
-            st.success("✅ Credenciais válidas")
-        except Exception as e:
-            st.error(f"❌ Erro nas credenciais: {e}")
-            return False
-        
-        # 3. Teste de autorização
-        st.subheader("3. Autorizando...")
-        try:
-            client = gspread.authorize(credentials)
-            st.success("✅ Autorização concedida")
-        except Exception as e:
-            st.error(f"❌ Erro na autorização: {e}")
-            return False
-        
-        # 4. Teste de abertura da planilha
-        st.subheader("4. Acessando Planilha...")
-        try:
-            sheet_id = "152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA"
-            spreadsheet = client.open_by_key(sheet_id)
-            st.success(f"✅ Planilha aberta: {spreadsheet.title}")
-        except Exception as e:
-            st.error(f"❌ Erro ao abrir planilha: {e}")
-            st.info("📝 Tentando por URL...")
-            try:
-                sheet_url = "https://docs.google.com/spreadsheets/d/152DHhNzoLlUs0Vq_uRuVkfoq3C2A_lcJfJjambA6EWA/edit"
-                spreadsheet = client.open_by_url(sheet_url)
-                st.success(f"✅ Planilha aberta por URL: {spreadsheet.title}")
-            except Exception as e2:
-                st.error(f"❌ Erro também por URL: {e2}")
-                return False
-        
-        # 5. Teste de leitura de dados
-        st.subheader("5. Lendo Dados...")
-        try:
-            worksheet = spreadsheet.sheet1
-            all_values = worksheet.get_all_values()
-            st.success(f"✅ Dados lidos: {len(all_values)} linhas totais")
-            
-            if len(all_values) > 0:
-                st.write("📋 Cabeçalho:", all_values[0])
-                st.write("📊 Linhas de dados:", len(all_values) - 1)
-            else:
-                st.warning("⚠️ Planilha vazia")
-                
-        except Exception as e:
-            st.error(f"❌ Erro ao ler dados: {e}")
-            return False
-        
-        st.success("🎉 TODOS OS TESTES PASSARAM!")
-        return True
-        
-    except Exception as e:
-        st.error(f"❌ Erro geral no diagnóstico: {e}")
-        return False
-    
-# =============================================================================
-# FUNÇÃO DO ASSISTENTE IA 
-# =============================================================================
-
-def show_assistente_ia(df_filtrado, gemini_key=None):
-    """Exibe a interface do assistente de IA com dados filtrados - VERSÃO FINAL CORRIGIDA"""
-    st.header("🤖 Assistente de IA - Análise de Atendimentos")
-    st.write("Faça perguntas em português sobre os dados de atendimentos e receba insights automatizados.")
-    
-    # Inicializar estado da sessão PARA O ASSISTENTE ESPECIFICAMENTE
-    if 'assistant_responses' not in st.session_state:
-        st.session_state.assistant_responses = []
-    if 'current_question' not in st.session_state:
-        st.session_state.current_question = ""
-    if 'last_response' not in st.session_state:
-        st.session_state.last_response = ""
-    if 'processing_question' not in st.session_state:
-        st.session_state.processing_question = False
-    if 'assistant_initialized' not in st.session_state:
-        st.session_state.assistant_initialized = True      
-   
-    # Configuração do modelo
-    model_options = [
-        '🚀 Gemini Pro - Análise Avançada',
-        '⚡ Gemini Flash - Resposta Rápida' 
-    ]
-
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        selected_model = st.selectbox(
-            label='**Nível de análise:**',
-            options=model_options,
-            index=0,
-            key='assistant_model'
-        )
-    
-        if selected_model == '🚀 Gemini Pro - Análise Avançada':
-            st.caption("💡 Análises profundas e insights detalhados")
-        elif selected_model == '⚡ Gemini Flash - Resposta Rápida':
-            st.caption("💡 Respostas rápidas para perguntas simples")
-    
-    with col2:
-        st.write("")
-        st.write("")
-        if st.button("🔄 Limpar Histórico", key='reset_assistant'):
-            st.session_state.assistant_responses = []
-            st.session_state.last_response = ""
-            st.session_state.current_question = ""
-            st.session_state.processing_question = False
-            st.success("✅ Histórico limpo!")
-            st.rerun()
-    
-    st.markdown("---")
-    
-    # Área de pergunta - SEMPRE mostrar o valor atual
-    user_question = st.text_area(
-        '**Digite sua pergunta:**',
-        placeholder='Ex: Existe algum padrão sazonal nos atendimentos? Quais são os módulos com mais atendimentos? Quem são os top atendentes?',
-        height=100,
-        key='assistant_question',
-        value=st.session_state.current_question
-    )
-    
-    # Atualizar a pergunta atual no session_state
-    st.session_state.current_question = user_question
-    
-    col1, col2 = st.columns([1, 4])
-    
-    with col1:
-        consultar_button = st.button('🔍 Consultar Assistente', type='primary', key='assistant_btn', use_container_width=True)
-    
-    with col2:
-        if st.session_state.last_response and not st.session_state.processing_question:
-            if st.button('📋 Copiar Resposta', key='copy_response', use_container_width=True):
-                st.code(st.session_state.last_response, language='markdown')
-                st.success("✅ Resposta copiada para a área de transferência!")
-    
-    # VERIFICAR SE HÁ UMA CONSULTA PENDENTE PARA PROCESSAR
-    if consultar_button and user_question and not st.session_state.processing_question:
-        # Marcar que estamos processando
-        st.session_state.processing_question = True
-        st.session_state.current_question = user_question
-        
-        # Armazenar a pergunta para processamento
-        st.session_state.pending_question = user_question
-        st.session_state.pending_model = selected_model
-        
-        # Forçar rerun imediatamente para mostrar o spinner
-        st.rerun()
-    
-    # PROCESSAR A CONSULTA APÓS O RERUN (quando processing_question = True)
-    if st.session_state.get('processing_question', False) and st.session_state.get('pending_question'):
-        # Container para o spinner
-        processing_placeholder = st.empty()
-        
-        with processing_placeholder.container():
-            with st.spinner('🤔 Analisando os dados filtrados... Isso pode levar alguns segundos'):
-                try:
-                    # Importar e criar assistente
-                    from novo_assistente import consultar_assistente
-                    
-                    # Executar consulta com os dados pendentes
-                    resposta = consultar_assistente(
-                        pergunta=st.session_state.pending_question, 
-                        df_filtrado=df_filtrado,
-                        tipo_modelo=st.session_state.pending_model
-                        gemini_key=gemini_key
-                    )
-                    
-                    # Salvar no histórico
-                    nova_resposta = {
-                        'pergunta': st.session_state.pending_question,
-                        'resposta': resposta,
-                        'modelo': st.session_state.pending_model,
-                        'timestamp': datetime.now().strftime('%d/%m/%Y %H:%M'),
-                        'registros': len(df_filtrado)
-                    }
-                    
-                    st.session_state.assistant_responses.append(nova_resposta)
-                    st.session_state.last_response = resposta
-                    
-                except Exception as e:
-                    error_msg = f"❌ Erro ao consultar assistente: {str(e)}"
-                    st.error(error_msg)
-                    st.session_state.last_response = error_msg
-        
-        # Limpar estados de processamento
-        st.session_state.processing_question = False
-        st.session_state.pending_question = None
-        st.session_state.pending_model = None
-        
-        # Limpar o placeholder do spinner
-        processing_placeholder.empty()
-        
-        # Rerun final para mostrar a resposta
-        st.rerun()
-    
-    # MOSTRAR RESPOSTAS - APENAS quando não estiver processando
-    if not st.session_state.processing_question:
-        # Mostrar última resposta
-        if st.session_state.last_response:
-            st.markdown("---")
-            st.subheader("📋 Resposta:")
-            st.markdown(st.session_state.last_response)
-            
-            # Informações do contexto
-            with st.expander("ℹ️ Informações do contexto"):
-                st.write(f"**Modelo usado:** {selected_model}")
-                st.write(f"**Registros analisados:** {len(df_filtrado)}")
-                st.write(f"**Data/hora:** {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        
-        # Mostrar histórico de conversas
-        if len(st.session_state.assistant_responses) > 1:
-            st.markdown("---")
-            st.subheader("📚 Histórico de Consultas")
-            
-            # Mostrar do mais recente para o mais antigo (exceto o último que já está mostrado)
-            for i, resp in enumerate(reversed(st.session_state.assistant_responses[:-1])):
-                with st.expander(f"🗨️ {resp['pergunta'][:50]}... - {resp['timestamp']}"):
-                    st.write(f"**Pergunta:** {resp['pergunta']}")
-                    st.markdown("**Resposta:**")
-                    st.markdown(resp['resposta'])
-                    st.caption(f"Modelo: {resp['modelo']} | Registros: {resp['registros']} | {resp['timestamp']}")
-
-
 # INTERFACE PRINCIPAL
 def main():
-    st.title("📊 Dashboard de Atendimentos - SAI")
+    st.title("📊 Dashboard de Atendimentos - IMAP")
     st.markdown("---")
     
     # Sidebar com upload
@@ -978,21 +783,6 @@ def main():
         selected_categoria = st.sidebar.selectbox("📂 Categoria", categoria_options)
         if selected_categoria != 'TODAS':
             df_filtered = df_filtered[df_filtered['Categorias'] == selected_categoria]
-
-    # =============================================================================
-    # BUSCA E VERIFICAÇÃO DA CHAVE GEMINI (NOVO BLOCO CRÍTICO)
-    # =============================================================================
-    gemini_key = None
-    if "gemini" in st.secrets and "api_key" in st.secrets.gemini:
-        # 1. Tenta buscar a chave na seção estruturada [gemini] do secrets.toml (Streamlit Cloud)
-        gemini_key = st.secrets.gemini.api_key
-        st.sidebar.success("🔑 Chave Gemini carregada via st.secrets!")
-    elif os.getenv('GEMINI_API_KEY'):
-        # 2. Tenta buscar como variável de ambiente (Local ou Secrets raiz)
-        gemini_key = os.getenv('GEMINI_API_KEY')
-        st.sidebar.info("🔑 Chave Gemini carregada via os.getenv (ambiente local)!")
-    else:
-        st.sidebar.error("❌ Chave Gemini NÃO encontrada. O Assistente IA estará desativado.")
     
     # =============================================================================
     # MÉTRICAS PRINCIPAIS
@@ -1030,13 +820,12 @@ def main():
     # =============================================================================
     
     st.markdown("---")
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📈 Visão Geral", 
         "👥 Análise por Colaborador", 
         "📋 Tipos de Atendimento",
         "🔧 Análise por Módulo",
-        "📊 Dados",
-        "🤖 Assistente IA"
+        "📊 Dados"
     ])
     
     with tab1:
@@ -1053,10 +842,16 @@ def main():
     
     with tab5:
         show_dados_completos(df_filtered)
-
-    with tab6:  
-        show_assistente_ia(df_filtered, gemini_key=gemini_key)
     
+    # Informações do dataset
+    st.sidebar.header("ℹ️ Informações do Dataset")
+    st.sidebar.write(f"Registros totais: {len(df)}")
+    st.sidebar.write(f"Registros filtrados: {len(df_filtered)}")
+    st.sidebar.write(f"Colunas: {len(df.columns)}")
+    
+    # Botão de teste de conexão
+    if st.sidebar.button("🧪 Testar Conexão relatorio_set_out"):
+        test_relatorio_connection()
 
 if __name__ == "__main__":
     main()

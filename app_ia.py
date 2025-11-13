@@ -1,5 +1,3 @@
-from dotenv import load_dotenv
-load_dotenv()
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -8,7 +6,6 @@ import gspread
 from google.oauth2 import service_account
 from datetime import datetime
 import os
-from google import genai
 
 # Configuração da página (mantido igual)
 st.set_page_config(
@@ -715,7 +712,7 @@ def diagnostic_test():
 # FUNÇÃO DO ASSISTENTE IA 
 # =============================================================================
 
-def show_assistente_ia(df_filtrado, gemini_key=None):
+def show_assistente_ia(df_filtrado):
     """Exibe a interface do assistente de IA com dados filtrados - VERSÃO FINAL CORRIGIDA"""
     st.header("🤖 Assistente de IA - Análise de Atendimentos")
     st.write("Faça perguntas em português sobre os dados de atendimentos e receba insights automatizados.")
@@ -818,7 +815,6 @@ def show_assistente_ia(df_filtrado, gemini_key=None):
                         pergunta=st.session_state.pending_question, 
                         df_filtrado=df_filtrado,
                         tipo_modelo=st.session_state.pending_model
-                        gemini_key=gemini_key
                     )
                     
                     # Salvar no histórico
@@ -978,21 +974,6 @@ def main():
         selected_categoria = st.sidebar.selectbox("📂 Categoria", categoria_options)
         if selected_categoria != 'TODAS':
             df_filtered = df_filtered[df_filtered['Categorias'] == selected_categoria]
-
-    # =============================================================================
-    # BUSCA E VERIFICAÇÃO DA CHAVE GEMINI (NOVO BLOCO CRÍTICO)
-    # =============================================================================
-    gemini_key = None
-    if "gemini" in st.secrets and "api_key" in st.secrets.gemini:
-        # 1. Tenta buscar a chave na seção estruturada [gemini] do secrets.toml (Streamlit Cloud)
-        gemini_key = st.secrets.gemini.api_key
-        st.sidebar.success("🔑 Chave Gemini carregada via st.secrets!")
-    elif os.getenv('GEMINI_API_KEY'):
-        # 2. Tenta buscar como variável de ambiente (Local ou Secrets raiz)
-        gemini_key = os.getenv('GEMINI_API_KEY')
-        st.sidebar.info("🔑 Chave Gemini carregada via os.getenv (ambiente local)!")
-    else:
-        st.sidebar.error("❌ Chave Gemini NÃO encontrada. O Assistente IA estará desativado.")
     
     # =============================================================================
     # MÉTRICAS PRINCIPAIS
@@ -1055,7 +1036,7 @@ def main():
         show_dados_completos(df_filtered)
 
     with tab6:  
-        show_assistente_ia(df_filtered, gemini_key=gemini_key)
+        show_assistente_ia(df_filtered)
     
 
 if __name__ == "__main__":

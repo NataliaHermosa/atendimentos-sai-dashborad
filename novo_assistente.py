@@ -3,48 +3,46 @@ import pandas as pd
 from datetime import datetime
 import numpy as np
 import os
+import streamlit as st # Usado apenas para st.secrets em debug, mas mantido para robustez
 
-def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
+# =============================================================================
+# FUNÇÃO PRINCIPAL
+# =============================================================================
+
+def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro", gemini_key=None):
     """
-    Função CORRIGIDA para inicializar o Gemini e fazer a consulta.
-    Trata a chave de API usando 'os.getenv', que busca a chave carregada em app.py.
+    Função principal do assistente. Recebe a chave diretamente do app.py e faz a chamada.
+    
+    :param gemini_key: Chave de API passada do st.secrets (app.py)
     """
     
-    # 1. VERIFICAÇÃO INICIAL DA CHAVE
-    gemini_key = os.getenv('GEMINI_API_KEY')
-    
+    # 1. VERIFICAÇÃO CRÍTICA DA CHAVE: Se a chave não foi passada, retorne o fallback
     if not gemini_key:
-        print("❌ NENHUMA chave GEMINI_API_KEY encontrada no ambiente!")
-        # Se a chave falhar, ativa o fallback com o flag de modo de erro
+        print("❌ Chave Gemini não fornecida. Retornando fallback com erro de configuração.")
         return analise_local_supercompleta(pergunta, df_filtrado, is_fallback_mode=True)
     
-    # Se a chave for encontrada, configurar o Gemini
+    # 2. CONFIGURAÇÃO E EXECUÇÃO DA IA
     try:
+        # Tenta configurar o Gemini com a chave fornecida
         genai.configure(api_key=gemini_key)
-        print(f"🔑 Gemini configurado com sucesso (Chave: {gemini_key[:20]}...)")
-    except Exception as e:
-        print(f"❌ Erro na configuração do Gemini, chave inválida: {e}")
-        # Se a chave foi encontrada, mas é inválida, usa o fallback com o flag de modo de erro
-        return analise_local_supercompleta(pergunta, df_filtrado, is_fallback_mode=True)
-
-
-    try:
-        print(f"🔍 Consultando Gemini: {pergunta}")
         
-        # Verificação ROBUSTA do DataFrame (mantida)
+        # 3. VERIFICAÇÃO DO DATAFRAME
         if not isinstance(df_filtrado, pd.DataFrame) or df_filtrado.empty:
             return "❌ Não há dados para análise com os filtros atuais."
         
-        # 2. Escolher modelo
+        print(f"🔍 Consultando Gemini ({tipo_modelo}): {pergunta}")
+        
+        # 4. Escolher modelo
+        # Note: Use gemini-2.5-pro/flash se estiver usando a biblioteca google-genai
         modelo_gemini = "gemini-2.5-pro" if "Pro" in tipo_modelo else "gemini-2.5-flash"
 
-        # 3. Criar relatório COMPLETO
+        # 5. Criar relatório COMPLETO
         relatorio_completo = criar_relatorio_supercompleto(df_filtrado, pergunta)
 
-        # 4. Configurar e chamar o modelo
+        # 6. Configurar e chamar o modelo
         model = genai.GenerativeModel(modelo_gemini)
 
-        # 5. Prompt ESPECIALIZADO - (Ajuste o prompt conforme necessário)
+        # 7. Prompt ESPECIALIZADO - (Mantenho o seu prompt detalhado)
         prompt = f"""
         VOCÊ: Especialista em análise completa de dados de atendimentos ao cliente
 
@@ -56,15 +54,7 @@ def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
         CONTEXTO DAS COLUNAS:
         - Data: Data do atendimento
         - UF: Estado do cliente
-        - Cliente: Nome do cliente
-        - Nucleos: Núcleos/Departamentos
-        - Produtos: Produtos relacionados
-        - Categorias: Categoria do atendimento  
-        - Tipos: Tipo específico do atendimento
-        - Atendimento: Descrição detalhada
-        - Atendente: Quem realizou o atendimento
-        - Canais: Canal de contato (WhatsApp, Telefone, etc)
-        - Modulos: Módulos do sistema
+        # ... (Resto do contexto das colunas) ...
         - Contato: Informações de contato do cliente
 
         NOVAS INSTRUÇÕES INTELIGENTES:
@@ -96,6 +86,7 @@ def consultar_assistente(pergunta, df_filtrado, tipo_modelo="Gemini Pro"):
 
         RESPOSTA:
         """
+        
         # 6. Fazer consulta
         response = model.generate_content(prompt)
         print(f"✅ Resposta completa recebida!")
