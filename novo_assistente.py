@@ -602,3 +602,5 @@ def analise_local_supercompleta(pergunta, df_filtrado, is_fallback_mode=False):
         error_msg = f"❌ Erro na análise local: {str(e)}"
         print(error_msg)
         return error_msg
+    
+# Forcando o commit de sincronizacao
