@@ -8,11 +8,9 @@ openpyxl>=3.1.2
 gspread>=6.0.0
 google-auth>=2.23.0
 google-api-python-client>=2.100.0
-# Removido oauth2client (Gspread e Google-auth já devem ser suficientes)
 
-# Pacotes Gemini (SDK Mais Novo)
-google-genai # Usando a versão mais recente recomendada
-# Se quiser usar o SDK antigo: google-generativeai>=0.3.0
+# Pacotes Gemini
+google-generativeai>=0.3.0
 
 # Utilitários
 python-dotenv
