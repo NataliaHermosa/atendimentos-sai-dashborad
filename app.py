@@ -8,7 +8,7 @@ import gspread
 from google.oauth2 import service_account
 from datetime import datetime
 import os
-from google import genai
+import google.generativeai as genai
 
 # Configuração da página (mantido igual)
 st.set_page_config(
@@ -146,6 +146,54 @@ def corrigir_datas(df):
     
     return df
 
+def processar_multiplos_modulos(df):
+    """
+    Processa células com múltiplos módulos separados por VÍRGULA ou PONTO-E-VÍRGULA.
+    Cria uma nova linha para cada módulo individual.
+    """
+    if 'Modulos' not in df.columns:
+        return df
+    
+    # Lista para armazenar as novas linhas
+    novas_linhas = []
+    
+    for idx, row in df.iterrows():
+        modulo_valor = str(row['Modulos']).strip()
+        
+        # Pular valores vazios ou padrão
+        if modulo_valor in ['', 'NÃO INFORMADO', 'nan', 'NaN']:
+            novas_linhas.append(row)
+            continue
+        
+        separadores = [',', ';']
+        
+        # Verificar se tem algum dos separadores
+        tem_separador = any(sep in modulo_valor for sep in separadores)
+        
+        if tem_separador:
+           
+            if ';' in modulo_valor:
+                # Dividir por ponto-e-vírgula
+                modulos_divididos = [mod.strip() for mod in modulo_valor.split(';') if mod.strip()]
+            else:
+                # Dividir por vírgula
+                modulos_divididos = [mod.strip() for mod in modulo_valor.split(',') if mod.strip()]
+            
+            # Criar uma linha para cada módulo individual
+            for modulo_individual in modulos_divididos:
+                if modulo_individual and modulo_individual not in ['', 'NÃO INFORMADO']:
+                    nova_linha = row.copy()
+                    nova_linha['Modulos'] = modulo_individual.strip()
+                    novas_linhas.append(nova_linha)
+        else:
+            # Se não tem separadores, manter a linha original
+            novas_linhas.append(row)
+    
+    # Criar novo DataFrame com as linhas processadas
+    df_processado = pd.DataFrame(novas_linhas).reset_index(drop=True)
+    
+    return df_processado
+
 def clean_data(df):
     """Função para limpeza e padronização dos dados"""
     
@@ -163,13 +211,17 @@ def clean_data(df):
     if 'Data' not in df.columns or df['Data'].isna().all():
         df['Data'] = pd.to_datetime('today')
     
+    # 🆕 NOVO: PROCESSAR MÚLTIPLOS MÓDULOS
+    if 'Modulos' in df.columns:
+        df = processar_multiplos_modulos(df)
+    
     # Preencher valores vazios, nulos e espaços em branco
     fill_columns = {
         'UF': 'NÃO INFORMADO',
         'Atendente': 'NÃO INFORMADO', 
         'Categorias': 'NÃO INFORMADA',
         'Tipos': 'NÃO INFORMADO',
-        'Modulos': 'NÃO INFORMADO',
+        'Modulos': 'NÃO INFORMADO',  # Agora já processado acima
         'Canais': 'NÃO INFORMADO'
     }
     
@@ -482,6 +534,7 @@ def show_analise_modulos(df):
     resumo_modulos = resumo_modulos.sort_values('Total Atendimentos', ascending=False)
     
     st.dataframe(resumo_modulos, use_container_width=True)
+
 
 # Função para Visão Geral
 def show_overview(df):
@@ -1038,6 +1091,7 @@ def main():
         "🔧 Análise por Módulo",
         "📊 Dados",
         "🤖 Assistente IA"
+        
     ])
     
     with tab1:
@@ -1057,7 +1111,7 @@ def main():
 
     with tab6:  
         show_assistente_ia(df_filtered, gemini_key=gemini_key)
-    
+  
 
 if __name__ == "__main__":
     main()
